@@ -12,16 +12,34 @@ document.addEventListener('DOMContentLoaded', () => {
   const userSelect = document.getElementById('userid');
   const appTypeSelect = document.getElementById('applicationtype');
   const activeSelect = document.getElementById('active');
+  const reportTypeSelect = document.getElementById('reporttype');
   const resultsDiv = document.getElementById('results');
   const form = document.getElementById('filter-form');
+
+  function getFilterParams(forEndpoint) {
+    const params = {};
+    if (clientSelect.value) {
+      params.clientid = parseInt(clientSelect.value);
+    }
+    if (envSelect.value) {
+      params.companyid = parseInt(envSelect.value);
+    }
+    if (appTypeSelect.value) {
+      params.applicationtype = appTypeSelect.value;
+    }
+    if (activeSelect.value) {
+      params.active = activeSelect.value === 'true';
+    }
+    return params;
+  }
 
   function clearSelect(select) {
     select.innerHTML = '<option value="">Todos</option>';
   }
 
-  function fetchClients() {
+  function fetchClients(params = {}) {
     clearSelect(clientSelect);
-    postJson('/reports/ambientes', {})
+    postJson('/reports/ambientes', params)
       .then(data => {
         const seen = {};
         data.forEach(item => {
@@ -91,47 +109,65 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // initial population
-  fetchClients();
-  fetchEnvironments();
-  fetchUsers();
-  fetchAppTypes();
+  const initialParams = getFilterParams();
+  fetchClients(initialParams);
+  fetchEnvironments(initialParams);
+  fetchUsers(initialParams);
+  fetchAppTypes(initialParams);
 
   // event listeners
   clientSelect.addEventListener('change', () => {
-    const params = { clientid: clientSelect.value };
+    const params = getFilterParams();
+    fetchClients(params);
     fetchEnvironments(params);
     fetchUsers(params);
     fetchAppTypes(params);
   });
 
   envSelect.addEventListener('change', () => {
-    const params = { clientid: clientSelect.value, companyid: envSelect.value };
+    const params = getFilterParams();
+    fetchClients(params);
+    fetchEnvironments(params);
     fetchUsers(params);
     fetchAppTypes(params);
   });
 
   userSelect.addEventListener('change', () => {
-    const params = { clientid: clientSelect.value, userid: userSelect.value };
+    const params = getFilterParams();
+    fetchClients(params);
     fetchEnvironments(params);
+    fetchUsers(params);
+    fetchAppTypes(params);
+  });
+
+  appTypeSelect.addEventListener('change', () => {
+    const params = getFilterParams();
+    fetchClients(params);
+    fetchEnvironments(params);
+    fetchUsers(params);
+    fetchAppTypes(params);
+  });
+
+  activeSelect.addEventListener('change', () => {
+    const params = getFilterParams();
+    fetchClients(params);
+    fetchEnvironments(params);
+    fetchUsers(params);
     fetchAppTypes(params);
   });
 
   form.addEventListener('submit', (e) => {
     e.preventDefault();
-    const params = {};
-    if (clientSelect.value) params.clientid = clientSelect.value;
-    if (envSelect.value) params.companyid = envSelect.value;
-    if (userSelect.value) params.userid = userSelect.value;
-    if (appTypeSelect.value) params.applicationtype = appTypeSelect.value;
-    if (activeSelect.value) params.active = activeSelect.value;
-
-    const endpoint = userSelect.value ? '/reports/usuarios' : '/reports/ambientes';
+    const reportType = reportTypeSelect.value || 'ambientes';
+    const params = getFilterParams(reportType);
+    const endpoint = reportType === 'usuarios' ? '/reports/usuarios' : '/reports/ambientes';
     postJson(endpoint, params)
       .then(data => {
         // Consolidate duplicate records per entity and application type
         const seenKeys = new Set();
+        const isUserReport = reportType === 'usuarios';
         const deduped = data.filter(item => {
-          const keyBase = userSelect.value ? item.userid : item.companyid;
+          const keyBase = isUserReport ? item.userid : item.companyid;
           const key = `${keyBase}_${item.normalized_app_type}`;
           if (!seenKeys.has(key)) {
             seenKeys.add(key);
@@ -144,7 +180,10 @@ document.addEventListener('DOMContentLoaded', () => {
           resultsDiv.innerHTML = '<p>Nenhum resultado encontrado.</p>';
           return;
         }
-        const cols = Object.keys(data[0]);
+        let cols = Object.keys(data[0]);
+        if (reportType === 'usuarios') {
+          cols = ['userid','user_name','email','user_active','companyid','environment_short','normalized_app_type'];
+        }
         let html = '<table><thead><tr>';
         cols.forEach(c => html += `<th>${c}</th>`);
         html += '</tr></thead><tbody>';
