@@ -6,17 +6,34 @@ function postJson(url, params = {}) {
   }).then(res => res.json());
 }
 
+function exportTableToCSV(tableId, filename = 'relatorio.csv') {
+  const table = document.querySelector(`#${tableId}`);
+  if (!table) return;
+  let csv = [];
+  const rows = table.querySelectorAll('tr');
+  for (let row of rows) {
+    let cols = Array.from(row.querySelectorAll('th,td')).map(td => `"${(td.innerText || '').replace(/"/g, '""')}"`);
+    csv.push(cols.join(','));
+  }
+  const csvContent = "data:text/csv;charset=utf-8," + csv.join('\n');
+  const link = document.createElement('a');
+  link.setAttribute('href', csvContent);
+  link.setAttribute('download', filename);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   const clientSelect = document.getElementById('clientid');
   const envSelect = document.getElementById('environment');
-  const userSelect = document.getElementById('userid');
   const appTypeSelect = document.getElementById('applicationtype');
   const activeSelect = document.getElementById('active');
   const reportTypeSelect = document.getElementById('reporttype');
   const resultsDiv = document.getElementById('results');
   const form = document.getElementById('filter-form');
 
-  function getFilterParams(forEndpoint) {
+  function getFilterParams() {
     const params = {};
     if (clientSelect.value) {
       params.clientid = parseInt(clientSelect.value);
@@ -28,7 +45,7 @@ document.addEventListener('DOMContentLoaded', () => {
       params.applicationtype = appTypeSelect.value;
     }
     if (activeSelect.value) {
-      params.active = activeSelect.value === 'true';
+      params.active = activeSelect.value === 'true' ? true : (activeSelect.value === 'false' ? false : undefined);
     }
     return params;
   }
@@ -38,6 +55,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function fetchClients(params = {}) {
+    const prev = clientSelect.value;
     clearSelect(clientSelect);
     postJson('/reports/ambientes', params)
       .then(data => {
@@ -52,10 +70,14 @@ document.addEventListener('DOMContentLoaded', () => {
           opt.value = id; opt.textContent = name;
           clientSelect.appendChild(opt);
         });
+        if (prev && clientSelect.querySelector(`option[value="${prev}"]`)) {
+          clientSelect.value = prev;
+        }
       });
   }
 
   function fetchAppTypes(params = {}) {
+    const prev = appTypeSelect.value;
     clearSelect(appTypeSelect);
     postJson('/reports/ambientes', params)
       .then(data => {
@@ -68,10 +90,14 @@ document.addEventListener('DOMContentLoaded', () => {
           opt.value = type; opt.textContent = type;
           appTypeSelect.appendChild(opt);
         });
+        if (prev && appTypeSelect.querySelector(`option[value="${prev}"]`)) {
+          appTypeSelect.value = prev;
+        }
       });
   }
 
   function fetchEnvironments(params = {}) {
+    const prev = envSelect.value;
     clearSelect(envSelect);
     postJson('/reports/ambientes', params)
       .then(data => {
@@ -87,24 +113,9 @@ document.addEventListener('DOMContentLoaded', () => {
           opt.textContent = name;
           envSelect.appendChild(opt);
         });
-      });
-  }
-
-  function fetchUsers(params = {}) {
-    clearSelect(userSelect);
-    postJson('/reports/usuarios', params)
-      .then(data => {
-        const seen = {};
-        data.forEach(item => {
-          if (!seen[item.userid]) {
-            seen[item.userid] = item.user_name;
-          }
-        });
-        Object.entries(seen).forEach(([id,name]) => {
-          const opt = document.createElement('option');
-          opt.value = id; opt.textContent = name;
-          userSelect.appendChild(opt);
-        });
+        if (prev && envSelect.querySelector(`option[value="${prev}"]`)) {
+          envSelect.value = prev;
+        }
       });
   }
 
@@ -112,54 +123,38 @@ document.addEventListener('DOMContentLoaded', () => {
   const initialParams = getFilterParams();
   fetchClients(initialParams);
   fetchEnvironments(initialParams);
-  fetchUsers(initialParams);
   fetchAppTypes(initialParams);
 
   // event listeners
   clientSelect.addEventListener('change', () => {
     const params = getFilterParams();
-    fetchClients(params);
     fetchEnvironments(params);
-    fetchUsers(params);
     fetchAppTypes(params);
   });
 
   envSelect.addEventListener('change', () => {
     const params = getFilterParams();
-    fetchClients(params);
-    fetchEnvironments(params);
-    fetchUsers(params);
     fetchAppTypes(params);
   });
 
-  userSelect.addEventListener('change', () => {
-    const params = getFilterParams();
-    fetchClients(params);
-    fetchEnvironments(params);
-    fetchUsers(params);
-    fetchAppTypes(params);
-  });
+  appTypeSelect.addEventListener('change', () => {});
 
-  appTypeSelect.addEventListener('change', () => {
-    const params = getFilterParams();
-    fetchClients(params);
-    fetchEnvironments(params);
-    fetchUsers(params);
-    fetchAppTypes(params);
-  });
+  activeSelect.addEventListener('change', () => {});
 
-  activeSelect.addEventListener('change', () => {
-    const params = getFilterParams();
-    fetchClients(params);
-    fetchEnvironments(params);
-    fetchUsers(params);
-    fetchAppTypes(params);
+  // Exportar CSV
+  document.getElementById('exportBtn').addEventListener('click', () => {
+    const table = document.getElementById('results-table');
+    if (!table) {
+      alert('Nenhum resultado para exportar. Por favor, realize uma busca primeiro.');
+      return;
+    }
+    exportTableToCSV('results-table');
   });
 
   form.addEventListener('submit', (e) => {
     e.preventDefault();
     const reportType = reportTypeSelect.value || 'ambientes';
-    const params = getFilterParams(reportType);
+    const params = getFilterParams();
     const endpoint = reportType === 'usuarios' ? '/reports/usuarios' : '/reports/ambientes';
     postJson(endpoint, params)
       .then(data => {
@@ -184,7 +179,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (reportType === 'usuarios') {
           cols = ['userid','user_name','email','user_active','companyid','environment_short','normalized_app_type'];
         }
-        let html = '<table><thead><tr>';
+        let html = '<table id="results-table" class="table table-striped table-bordered"><thead><tr>';
         cols.forEach(c => html += `<th>${c}</th>`);
         html += '</tr></thead><tbody>';
         data.forEach(row => {
@@ -194,6 +189,11 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         html += '</tbody></table>';
         resultsDiv.innerHTML = html;
+        // Ative a ordenação
+        const table = resultsDiv.querySelector('table');
+        if (table && typeof Tablesort !== 'undefined') {
+          new Tablesort(table);
+        }
       });
   });
 });

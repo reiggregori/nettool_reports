@@ -16,6 +16,7 @@ class Params(BaseModel):
     clientid: Optional[int] = None
     companyid: Optional[int] = None
     applicationtype: Optional[str] = None
+    active: Optional[bool] = None
 
 NORM = """
 CASE
@@ -40,6 +41,9 @@ async def list_usuarios(params: Params, session: AsyncSession = Depends(get_sess
     if params.applicationtype:
         clauses.append(f"{NORM} = :applicationtype")
         q["applicationtype"] = params.applicationtype
+    if params.active is not None:
+        clauses.append("u.active = :active")
+        q["active"] = params.active
 
     sql = f"""
     SELECT
